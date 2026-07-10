@@ -1,4 +1,4 @@
-name: Detect Minecraft Versions (Ultimate)
+name: Detect Minecraft Versions (Ultimate Edition)
 
 on:
   schedule:
@@ -17,56 +17,88 @@ jobs:
 
       - name: Fetch and Update Versions
         run: |
-          # 1. โหลดข้อมูลจาก API หลักของ Minecraft
+          # =========================================================
+          # 1. [BEDROCK EDITION] ดึงข้อมูลจาก API หลักของ Minecraft
+          # =========================================================
           API_URL="https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
           JSON_DATA=$(curl -s "$API_URL")
           
-          # 2. [Bedrock] ดึงลิงก์ของ Windows และ Linux พร้อมตัดเอาเลขเวอร์ชั่น
           WIN_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockWindows") | .downloadUrl' | head -1)
           LINUX_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockLinux") | .downloadUrl' | head -1)
           VER_BEDROCK=$(echo "$WIN_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+
+          # =========================================================
+          # 2. [JAVA EDITION - RELEASE] ดึงข้อมูลตัวเต็ม + เวอร์ชั่น Java ที่ต้องใช้
+          # =========================================================
+          JAVA_MANIFEST=$(curl -s "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")
           
-          # 3. [Java PC] ดึงข้อมูลจาก Manifest หลักของ Mojang ดึงเลขเวอร์ชั่น, ขนาดไฟล์, และ SHA-1
-          JAVA_VERSION=$(curl -s "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json" | jq -r '.latest.release')
-          JAVA_META_URL=$(curl -s "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json" | jq -r --arg ver "$JAVA_VERSION" '.versions[] | select(.id == $ver) | .url')
+          JAVA_REL_VERSION=$(echo "$JAVA_MANIFEST" | jq -r '.latest.release')
+          JAVA_REL_META_URL=$(echo "$JAVA_MANIFEST" | jq -r --arg ver "$JAVA_REL_VERSION" '.versions[] | select(.id == $ver) | .url')
           
-          JAVA_JSON=$(curl -s "$JAVA_META_URL")
-          JAVA_URL=$(echo "$JAVA_JSON" | jq -r '.downloads.server.url')
-          JAVA_SIZE=$(echo "$JAVA_JSON" | jq -r '.downloads.server.size')
-          JAVA_SHA1=$(echo "$JAVA_JSON" | jq -r '.downloads.server.sha1')
+          JAVA_REL_JSON=$(curl -s "$JAVA_REL_META_URL")
+          JAVA_REL_URL=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.server.url // ""')
+          JAVA_REL_SIZE=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.server.size // 0')
+          JAVA_REL_SHA1=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.server.sha1 // ""')
+          JAVA_REL_JAVA_VER=$(echo "$JAVA_REL_JSON" | jq -r '.javaVersion.majorVersion // 0')
+          JAVA_REL_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $JAVA_REL_SIZE/1024/1024}")
+
+          # =========================================================
+          # 3. [JAVA EDITION - SNAPSHOT] ดึงข้อมูลตัวทดสอบล่าสุด
+          # =========================================================
+          JAVA_SNAP_VERSION=$(echo "$JAVA_MANIFEST" | jq -r '.latest.snapshot')
+          JAVA_SNAP_META_URL=$(echo "$JAVA_MANIFEST" | jq -r --arg ver "$JAVA_SNAP_VERSION" '.versions[] | select(.id == $ver) | .url')
           
-          # แปลงขนาดไฟล์ Java ให้เป็น MB เพื่อให้อ่านง่ายบนหน้าเว็บ
-          JAVA_SIZE_MB=$(echo "scale=2; $JAVA_SIZE / 1024 / 1024" | bc)
-          
-          # 4. [Timestamp] สร้างเวลาสากล และ เวลาไทยสำเร็จรูป (Asia/Bangkok)
+          JAVA_SNAP_JSON=$(curl -s "$JAVA_SNAP_META_URL")
+          JAVA_SNAP_URL=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.server.url // ""')
+          JAVA_SNAP_SIZE=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.server.size // 0')
+          JAVA_SNAP_SHA1=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.server.sha1 // ""')
+          JAVA_SNAP_JAVA_VER=$(echo "$JAVA_SNAP_JSON" | jq -r '.javaVersion.majorVersion // 0')
+          JAVA_SNAP_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $JAVA_SNAP_SIZE/1024/1024}")
+
+          # =========================================================
+          # 4. [METADATA & TIMESTAMPS] เวลาสากล UTC และข้อมูลระบบ
+          # =========================================================
           UTC_NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          THAI_NOW=$(TZ="Asia/Bangkok" date +"%d/%m/%Y %H:%M น.")
-          
-          # 5. สร้างไฟล์ versions.json โครงสร้างระดับพรีเมียม
+
+          # =========================================================
+          # 5. เขียนข้อมูลทั้งหมดลงไฟล์ versions.json
+          # =========================================================
           cat <<EOF > versions.json
           {
             "status": "success",
+            "meta": {
+              "schema_version": "1.1.0",
+              "repository": "${GITHUB_REPOSITORY}",
+              "workflow_run_id": "${GITHUB_RUN_ID}",
+              "last_updated_utc": "$UTC_NOW"
+            },
             "latest": {
               "bedrock": {
                 "version": "${VER_BEDROCK:-"0.0.0.0"}",
                 "windows": "${WIN_URL:-""}",
                 "linux": "${LINUX_URL:-""}"
               },
-              "java_pc": {
-                "version": "${JAVA_VERSION:-"0.0.0.0"}",
-                "url": "${JAVA_URL:-""}",
-                "file_size": "${JAVA_SIZE_MB} MB",
-                "sha1": "${JAVA_SHA1:-""}"
+              "java": {
+                "release": {
+                  "version": "${JAVA_REL_VERSION:-"0.0.0.0"}",
+                  "url": "${JAVA_REL_URL:-""}",
+                  "file_size": "${JAVA_REL_SIZE_MB} MB",
+                  "sha1": "${JAVA_REL_SHA1:-""}",
+                  "required_java_major": $JAVA_REL_JAVA_VER
+                },
+                "snapshot": {
+                  "version": "${JAVA_SNAP_VERSION:-"0.0.0.0"}",
+                  "url": "${JAVA_SNAP_URL:-""}",
+                  "file_size": "${JAVA_SNAP_SIZE_MB} MB",
+                  "sha1": "${JAVA_SNAP_SHA1:-""}",
+                  "required_java_major": $JAVA_SNAP_JAVA_VER
+                }
               }
             },
             "useful_links": {
               "bedrock_changelog": "https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs",
               "java_changelog": "https://www.minecraft.net/en-us/article/minecraft-java-edition",
               "mojang_bug_tracker": "https://bugs.mojang.com/"
-            },
-            "time": {
-              "utc": "$UTC_NOW",
-              "thai_local": "$THAI_NOW"
             }
           }
           EOF
@@ -74,5 +106,5 @@ jobs:
       - name: Auto Commit and Push
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🚀 อัปเกรดข้อมูลเวอร์ชั่นพรีเมียม (เพิ่มข้อมูล Java + เวลาไทย + ลิงก์)"
+          commit_message: "🚀 อัปเดตโครงสร้างเวอร์ชั่นแบบสมบูรณ์ที่สุด (Ultimate Edition)"
           file_pattern: "versions.json"
