@@ -1,9 +1,9 @@
-name: Detect Minecraft Versions (Final Ultimate)
+name: Minecraft Versions Database (With History)
 
 on:
   schedule:
     - cron: '0 */6 * * *' # รันอัตโนมัติทุกๆ 6 ชั่วโมง
-  workflow_dispatch: # ปุ่มกดรันเองซ่อมเองได้ตลอดเวลา
+  workflow_dispatch: # ปุ่มกดรันเอง
 
 jobs:
   check-versions:
@@ -15,8 +15,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fetch and Update Versions
+      - name: Fetch and Update Database
         run: |
+          # 0. ตรวจสอบว่ามีไฟล์ versions.json อยู่เดิมไหม หากไม่มีหรือไฟล์พัง ให้สร้างโครงสร้างเริ่มต้นก่อน
+          if [ ! -f versions.json ] || ! jq empty versions.json 2>/dev/null; then
+            echo '{"status":"success","latest":{},"history":{"bedrock_server":[],"java_release":[],"java_snapshot":[]}}' > versions.json
+          fi
+
           # =========================================================
           # 1. [BEDROCK] ดึงข้อมูล Server ตัวล่าสุด
           # =========================================================
@@ -36,13 +41,11 @@ jobs:
           JAVA_REL_META_URL=$(echo "$JAVA_MANIFEST" | jq -r --arg ver "$JAVA_REL_VERSION" '.versions[] | select(.id == $ver) | .url')
           JAVA_REL_JSON=$(curl -s "$JAVA_REL_META_URL")
           
-          # Server (Download Link)
           JAVA_REL_S_URL=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.server.url // ""')
           JAVA_REL_S_SIZE=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.server.size // 0')
           JAVA_REL_S_SHA1=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.server.sha1 // ""')
           JAVA_REL_S_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $JAVA_REL_S_SIZE/1024/1024}")
           
-          # Client (Download Link)
           JAVA_REL_C_URL=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.client.url // ""')
           JAVA_REL_C_SIZE=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.client.size // 0')
           JAVA_REL_C_SHA1=$(echo "$JAVA_REL_JSON" | jq -r '.downloads.client.sha1 // ""')
@@ -57,13 +60,11 @@ jobs:
           JAVA_SNAP_META_URL=$(echo "$JAVA_MANIFEST" | jq -r --arg ver "$JAVA_SNAP_VERSION" '.versions[] | select(.id == $ver) | .url')
           JAVA_SNAP_JSON=$(curl -s "$JAVA_SNAP_META_URL")
           
-          # Server (Download Link)
           JAVA_SNAP_S_URL=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.server.url // ""')
           JAVA_SNAP_S_SIZE=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.server.size // 0')
           JAVA_SNAP_S_SHA1=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.server.sha1 // ""')
           JAVA_SNAP_S_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $JAVA_SNAP_S_SIZE/1024/1024}")
           
-          # Client (Download Link)
           JAVA_SNAP_C_URL=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.client.url // ""')
           JAVA_SNAP_C_SIZE=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.client.size // 0')
           JAVA_SNAP_C_SHA1=$(echo "$JAVA_SNAP_JSON" | jq -r '.downloads.client.sha1 // ""')
@@ -72,76 +73,72 @@ jobs:
           JAVA_SNAP_JAVA_VER=$(echo "$JAVA_SNAP_JSON" | jq -r '.javaVersion.majorVersion // 0')
 
           # =========================================================
-          # 4. [METADATA] บันทึกเวลาสากล UTC
+          # 4. [METADATA] เวลาสากล UTC
           # =========================================================
           UTC_NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           # =========================================================
-          # 5. ประกอบร่างสร้างไฟล์ versions.json
+          # 5. [HISTORY ENGINE] ตรวจสอบและบันทึกประวัติแบบไม่ซ้ำค่าเดิม
           # =========================================================
-          cat <<EOF > versions.json
-          {
-            "status": "success",
-            "meta": {
-              "schema_version": "1.2.0",
-              "repository": "${GITHUB_REPOSITORY}",
-              "workflow_run_id": "${GITHUB_RUN_ID}",
-              "last_updated_utc": "$UTC_NOW"
-            },
-            "latest": {
-              "bedrock": {
-                "version": "${VER_BEDROCK:-"0.0.0.0"}",
-                "server": {
-                  "windows": "${WIN_URL:-""}",
-                  "linux": "${LINUX_URL:-""}"
-                },
-                "client": {
-                  "microsoft_store": "https://apps.microsoft.com/detail/9nblggh2jhxj",
-                  "google_play": "https://play.google.com/store/apps/details?id=com.mojang.minecraftpe",
-                  "apple_app_store": "https://apps.apple.com/app/minecraft/id477550734"
-                }
-              },
-              "java": {
-                "release": {
-                  "version": "${JAVA_REL_VERSION:-"0.0.0.0"}",
-                  "required_java_major": $JAVA_REL_JAVA_VER,
-                  "server": {
-                    "url": "${JAVA_REL_S_URL:-""}",
-                    "file_size": "${JAVA_REL_S_SIZE_MB} MB",
-                    "sha1": "${JAVA_REL_S_SHA1:-""}"
-                  },
+          
+          # เพิ่มประวัติ Bedrock Server (ถ้าเวอร์ชันยังไม่เคยถูกบันทึก)
+          jq --arg ver "$VER_BEDROCK" --arg win "$WIN_URL" --arg lnx "$LINUX_URL" --arg date "$UTC_NOW" \
+            '.history.bedrock_server |= (if (any(.version == $ver) | not) and $ver != "0.0.0.0" and $ver != "" then . + [{"version": $ver, "windows": $win, "linux": $lnx, "detected_at": $date}] else . end)' versions.json > tmp.json && mv tmp.json versions.json
+
+          # เพิ่มประวัติ Java Release (ถ้าเวอร์ชันยังไม่เคยถูกบันทึก)
+          jq --arg ver "$JAVA_REL_VERSION" --arg s_url "$JAVA_REL_S_URL" --arg s_size "${JAVA_REL_S_SIZE_MB} MB" --arg s_sha1 "$JAVA_REL_S_SHA1" --arg c_url "$JAVA_REL_C_URL" --arg c_size "${JAVA_REL_C_SIZE_MB} MB" --arg c_sha1 "$JAVA_REL_C_SHA1" --argjson java_ver "$JAVA_REL_JAVA_VER" --arg date "$UTC_NOW" \
+            '.history.java_release |= (if (any(.version == $ver) | not) and $ver != "0.0.0.0" and $ver != "" then . + [{"version": $ver, "required_java_major": $java_ver, "server": {"url": $s_url, "file_size": $s_size, "sha1": $s_sha1}, "client": {"url": $c_url, "file_size": $c_size, "sha1": $c_sha1}, "detected_at": $date}] else . end)' versions.json > tmp.json && mv tmp.json versions.json
+
+          # เพิ่มประวัติ Java Snapshot (ถ้าเวอร์ชันยังไม่เคยถูกบันทึก)
+          jq --arg ver "$JAVA_SNAP_VERSION" --arg s_url "$JAVA_SNAP_S_URL" --arg s_size "${JAVA_SNAP_S_SIZE_MB} MB" --arg s_sha1 "$JAVA_SNAP_S_SHA1" --arg c_url "$JAVA_SNAP_C_URL" --arg c_size "${JAVA_SNAP_C_SIZE_MB} MB" --arg c_sha1 "$JAVA_SNAP_C_SHA1" --argjson java_ver "$JAVA_SNAP_JAVA_VER" --arg date "$UTC_NOW" \
+            '.history.java_snapshot |= (if (any(.version == $ver) | not) and $ver != "0.0.0.0" and $ver != "" then . + [{"version": $ver, "required_java_major": $java_ver, "server": {"url": $s_url, "file_size": $s_size, "sha1": $s_sha1}, "client": {"url": $c_url, "file_size": $c_size, "sha1": $c_sha1}, "detected_at": $date}] else . end)' versions.json > tmp.json && mv tmp.json versions.json
+
+          # =========================================================
+          # 6. อัปเดตข้อมูลโครงสร้างภาพรวม และ "เวอร์ชันล่าสุด (Latest)"
+          # =========================================================
+          jq --arg repo "${GITHUB_REPOSITORY}" --arg run_id "${GITHUB_RUN_ID}" --arg date "$UTC_NOW" \
+             --arg b_ver "${VER_BEDROCK:-"0.0.0.0"}" --arg b_win "${WIN_URL:-""}" --arg b_lnx "${LINUX_URL:-""}" \
+             --arg j_rel_ver "${JAVA_REL_VERSION:-"0.0.0.0"}" --argjson j_rel_java $JAVA_REL_JAVA_VER \
+             --arg j_rel_s_url "${JAVA_REL_S_URL:-""}" --arg j_rel_s_size "${JAVA_REL_S_SIZE_MB} MB" --arg j_rel_s_sha1 "${JAVA_REL_S_SHA1:-""}" \
+             --arg j_rel_c_url "${JAVA_REL_C_URL:-""}" --arg j_rel_c_size "${JAVA_REL_C_SIZE_MB} MB" --arg j_rel_c_sha1 "${JAVA_REL_C_SHA1:-""}" \
+             --arg j_snap_ver "${JAVA_SNAP_VERSION:-"0.0.0.0"}" --argjson j_snap_java $JAVA_SNAP_JAVA_VER \
+             --arg j_snap_s_url "${JAVA_SNAP_S_URL:-""}" --arg j_snap_s_size "${JAVA_SNAP_S_SIZE_MB} MB" --arg j_snap_s_sha1 "${JAVA_SNAP_S_SHA1:-""}" \
+             --arg j_snap_c_url "${JAVA_SNAP_C_URL:-""}" --arg j_snap_c_size "${JAVA_SNAP_C_SIZE_MB} MB" --arg j_snap_c_sha1 "${JAVA_SNAP_C_SHA1:-""}" \
+             '.status = "success" |
+              .meta = {"schema_version": "1.3.0", "repository": $repo, "workflow_run_id": $run_id, "last_updated_utc": $date} |
+              .latest = {
+                "bedrock": {
+                  "version": $b_ver,
+                  "server": {"windows": $b_win, "linux": $b_lnx},
                   "client": {
-                    "url": "${JAVA_REL_C_URL:-""}",
-                    "file_size": "${JAVA_REL_C_SIZE_MB} MB",
-                    "sha1": "${JAVA_REL_C_SHA1:-""}"
+                    "microsoft_store": "https://apps.microsoft.com/detail/9nblggh2jhxj",
+                    "google_play": "https://play.google.com/store/apps/details?id=com.mojang.minecraftpe",
+                    "apple_app_store": "https://apps.apple.com/app/minecraft/id477550734"
                   }
                 },
-                "snapshot": {
-                  "version": "${JAVA_SNAP_VERSION:-"0.0.0.0"}",
-                  "required_java_major": $JAVA_SNAP_JAVA_VER,
-                  "server": {
-                    "url": "${JAVA_SNAP_S_URL:-""}",
-                    "file_size": "${JAVA_SNAP_S_SIZE_MB} MB",
-                    "sha1": "${JAVA_SNAP_S_SHA1:-""}"
+                "java": {
+                  "release": {
+                    "version": $j_rel_ver,
+                    "required_java_major": $j_rel_java,
+                    "server": {"url": $j_rel_s_url, "file_size": $j_rel_s_size, "sha1": $j_rel_s_sha1},
+                    "client": {"url": $j_rel_c_url, "file_size": $j_rel_c_size, "sha1": $j_rel_c_sha1}
                   },
-                  "client": {
-                    "url": "${JAVA_SNAP_C_URL:-""}",
-                    "file_size": "${JAVA_SNAP_C_SIZE_MB} MB",
-                    "sha1": "${JAVA_SNAP_C_SHA1:-""}"
+                  "snapshot": {
+                    "version": $j_snap_ver,
+                    "required_java_major": $j_snap_java,
+                    "server": {"url": $j_snap_s_url, "file_size": $j_snap_s_size, "sha1": $j_snap_s_sha1},
+                    "client": {"url": $j_snap_c_url, "file_size": $j_snap_c_size, "sha1": $j_snap_c_sha1}
                   }
                 }
-              }
-            },
-            "useful_links": {
-              "bedrock_changelog": "https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs",
-              "java_changelog": "https://www.minecraft.net/en-us/article/minecraft-java-edition",
-              "mojang_bug_tracker": "https://bugs.mojang.com/"
-            }
-          }
-          EOF
+              } |
+              .useful_links = {
+                "bedrock_changelog": "https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs",
+                "java_changelog": "https://www.minecraft.net/en-us/article/minecraft-java-edition",
+                "mojang_bug_tracker": "https://bugs.mojang.com/"
+              }' versions.json > tmp.json && mv tmp.json versions.json
 
       - name: Auto Commit and Push
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🚀 อัปเดตคลังข้อมูล Minecraft สมบูรณ์แบบ 100% (All-in-One)"
+          commit_message: "📦 อัปเดตฐานข้อมูลเวอร์ชันและประวัติประเภทรวม (Database Log)"
           file_pattern: "versions.json"
