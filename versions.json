@@ -1,25 +1,37 @@
 {
   "status": "success",
+  "meta": {
+    "schema_version": "1.1.0",
+    "repository": "KaracaPK/bds-versions",
+    "workflow_run_id": "29092219916",
+    "last_updated_utc": "2026-07-10T12:20:10Z"
+  },
   "latest": {
     "bedrock": {
       "version": "1.26.33.1",
       "windows": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.33.1.zip",
       "linux": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.33.1.zip"
     },
-    "java_pc": {
-      "version": "26.2",
-      "url": "https://piston-data.mojang.com/v1/objects/823e2250d24b3ddac457a60c92a6a941943fcd6a/server.jar",
-      "file_size": "58.07 MB",
-      "sha1": "823e2250d24b3ddac457a60c92a6a941943fcd6a"
+    "java": {
+      "release": {
+        "version": "26.2",
+        "url": "https://piston-data.mojang.com/v1/objects/823e2250d24b3ddac457a60c92a6a941943fcd6a/server.jar",
+        "file_size": "58.07 MB",
+        "sha1": "823e2250d24b3ddac457a60c92a6a941943fcd6a",
+        "required_java_major": 25
+      },
+      "snapshot": {
+        "version": "26.3-snapshot-3",
+        "url": "https://piston-data.mojang.com/v1/objects/6cd1e711f62dc45497df6f390a9e83ba6191be41/server.jar",
+        "file_size": "58.85 MB",
+        "sha1": "6cd1e711f62dc45497df6f390a9e83ba6191be41",
+        "required_java_major": 25
+      }
     }
   },
   "useful_links": {
     "bedrock_changelog": "https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs",
     "java_changelog": "https://www.minecraft.net/en-us/article/minecraft-java-edition",
     "mojang_bug_tracker": "https://bugs.mojang.com/"
-  },
-  "time": {
-    "utc": "2026-07-10T12:16:13Z",
-    "thai_local": "10/07/2026 19:16 น."
   }
 }
