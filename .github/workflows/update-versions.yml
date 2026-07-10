@@ -1,32 +1,32 @@
-name: Detect Minecraft Bedrock Versions
+name: Update Minecraft Bedrock Versions
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # ตั้งเวลาให้บอทรันเช็คทุกๆ 6 ชั่วโมง (เปลี่ยนได้ตามต้องการ)
-  workflow_dispatch: # อนุญาตให้เรากดปุ่มรันเองได้ (Manual trigger)
+    # Run every hour
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  check-versions:
+  update-versions:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # จำเป็นต้องมีเพื่อให้บอทมีสิทธิ์เขียนไฟล์ลง Repo ของเราได้
-
     steps:
-      # 1. ดึงไฟล์ใน Repository ปัจจุบันมา
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. เรียกใช้งาน Action สำหรับเช็คเวอร์ชั่น Minecraft (แก้ไขชื่อ Action ให้ถูกต้องแล้ว)
-      - name: Detect Minecraft Versions
-        id: detect # ตั้ง id ไว้เพื่อดึงค่าผลลัพธ์ไปใช้ใน Step ต่อไป
-        uses: jedipunkz/detect-minecraft-versions@v1.0.0
+      - name: Detect Minecraft Bedrock versions
+        id: detect
+        uses: jedipunkz/detect-minecraft-versions@v1
+        with:
+          output-file: 'versions.json'
 
-      # 3. ถ้าเจอเวอร์ชั่นใหม่ ให้ Commit และ Push ไฟล์ versions.json ขึ้น GitHub
-      - name: Commit and Push if changed
+      - name: Commit and push changes
         if: steps.detect.outputs.has-changes == 'true'
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add versions.json
-          git commit -m "อัปเดตเวอร์ชั่นใหม่: Stable ${{ steps.detect.outputs.stable-version }} | Preview ${{ steps.detect.outputs.preview-version }}"
+          git commit -m "Update Minecraft Bedrock versions"
           git push
