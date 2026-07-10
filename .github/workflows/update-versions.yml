@@ -1,4 +1,4 @@
-name: Detect Minecraft Bedrock Versions
+name: Detect Minecraft Versions
 
 on:
   schedule:
@@ -15,48 +15,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fetch API and Update Versions
+      - name: Fetch and Update Versions
         run: |
-          # 1. โหลดข้อมูลจาก "API ลับ" ของ Minecraft โดยตรง (ไม่มีวันโดนบล็อก)
+          # 1. โหลดข้อมูลจาก API หลักของ Minecraft
           API_URL="https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
           JSON_DATA=$(curl -s "$API_URL")
           
-          # 2. ใช้คำสั่ง jq ค้นหา Link ดาวน์โหลดแต่ละแพลตฟอร์มจากใน API
+          # 2. [Bedrock] ดึงลิงก์ของ Windows และ Linux พร้อมตัดเอาเลขเวอร์ชั่น
           WIN_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockWindows") | .downloadUrl' | head -1)
           LINUX_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockLinux") | .downloadUrl' | head -1)
-          WIN_PREV_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockWindowsPreview") | .downloadUrl' | head -1)
-          LINUX_PREV_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockLinuxPreview") | .downloadUrl' | head -1)
+          VER_BEDROCK=$(echo "$WIN_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
           
-          # 3. ใช้ Regex ตัดเอาเฉพาะ "ตัวเลขเวอร์ชั่น" ออกมาจากลิ้งก์ (เช่น 1.21.x.xx)
-          VER_STABLE=$(echo "$WIN_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
-          VER_PREVIEW=$(echo "$WIN_PREV_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          # 3. [Java PC] ดึงลิงก์ดาวน์โหลดไฟล์ server.jar และดึงเลขเวอร์ชั่นล่าสุดจาก Official Manifest ของ Mojang
+          JAVA_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverJar") | .downloadUrl' | head -1)
+          JAVA_VERSION=$(curl -s "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json" | jq -r '.latest.release')
           
-          # 4. (กันเหนียว) ถ้าไม่มีเวอร์ชั่น Preview ให้ใส่ค่าว่างแทน เพื่อไม่ให้สคริปต์พัง
-          VER_STABLE=${VER_STABLE:-"0.0.0.0"}
-          VER_PREVIEW=${VER_PREVIEW:-"0.0.0.0"}
-          WIN_PREV_URL=${WIN_PREV_URL:-""}
-          LINUX_PREV_URL=${LINUX_PREV_URL:-""}
+          # 4. [Timestamp] ดึงเวลาปัจจุบัน (โซนเวลาสากล UTC) เพื่อบันทึกเวลาที่บอทรันล่าสุด
+          LAST_UPDATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
-          # 5. สร้างและเขียนข้อมูลลงไฟล์ versions.json
+          # 5. สร้างไฟล์ versions.json โครงสร้างใหม่แบบไม่มี Preview มีแต่ตัวเต็มแยกฝั่ง Bedrock และ Java PC
           cat <<EOF > versions.json
           {
             "latest": {
-              "stable": {
-                "version": "$VER_STABLE",
-                "windows": "$WIN_URL",
-                "linux": "$LINUX_URL"
+              "bedrock": {
+                "version": "${VER_BEDROCK:-"0.0.0.0"}",
+                "windows": "${WIN_URL:-""}",
+                "linux": "${LINUX_URL:-""}"
               },
-              "preview": {
-                "version": "$VER_PREVIEW",
-                "windows": "$WIN_PREV_URL",
-                "linux": "$LINUX_PREV_URL"
+              "java_pc": {
+                "version": "${JAVA_VERSION:-"0.0.0.0"}",
+                "url": "${JAVA_URL:-""}"
               }
-            }
+            },
+            "last_updated": "$LAST_UPDATED"
           }
           EOF
 
       - name: Auto Commit and Push
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🚀 อัปเดตเวอร์ชั่น Minecraft อัตโนมัติ (ผ่าน API)"
+          commit_message: "🚀 อัปเดตเวอร์ชั่น Minecraft (Bedrock & Java PC) อัตโนมัติ"
           file_pattern: "versions.json"
