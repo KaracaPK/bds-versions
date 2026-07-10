@@ -2,27 +2,54 @@ name: Detect Minecraft Bedrock Versions
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # ตั้งเวลารันทุก 6 ชั่วโมง
+    - cron: '0 */6 * * *' # รันทุกๆ 6 ชั่วโมง
   workflow_dispatch: # ปุ่มกดรันเอง
 
 jobs:
   check-versions:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # จำเป็นมาก เพื่อให้บอทมีสิทธิ์เซฟไฟล์
+      contents: write
 
     steps:
-      # 1. ดึงโค้ดใน Repository ปัจจุบัน
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. รันบอทเช็คเวอร์ชั่นของ Minecraft
-      - name: Detect Minecraft Versions
-        uses: jedipunkz/detect-minecraft-versions@v1.0.0
+      - name: Fetch and Update Versions
+        run: |
+          # 1. ปลอมตัวเป็นเบราว์เซอร์ไปโหลดหน้าเว็บของ Minecraft
+          HTML=$(curl -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://www.minecraft.net/en-us/download/server/bedrock")
+          
+          # 2. ใช้ Regex ดึง Link ดาวน์โหลดออกมาตรงๆ (แม่นยำ 100%)
+          WIN_URL=$(echo "$HTML" | grep -oE 'https://minecraft\.azureedge\.net/bin-win/bedrock-server-[0-9\.]+\.zip' | head -1)
+          LINUX_URL=$(echo "$HTML" | grep -oE 'https://minecraft\.azureedge\.net/bin-linux/bedrock-server-[0-9\.]+\.zip' | head -1)
+          WIN_PREV_URL=$(echo "$HTML" | grep -oE 'https://minecraft\.azureedge\.net/bin-win-preview/bedrock-server-[0-9\.]+\.zip' | head -1)
+          LINUX_PREV_URL=$(echo "$HTML" | grep -oE 'https://minecraft\.azureedge\.net/bin-linux-preview/bedrock-server-[0-9\.]+\.zip' | head -1)
+          
+          # 3. ตัดเอาเฉพาะตัวเลขเวอร์ชั่น
+          VER_STABLE=$(echo "$WIN_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          VER_PREVIEW=$(echo "$WIN_PREV_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          
+          # 4. เขียนข้อมูลใหม่ทั้งหมดลงไฟล์ versions.json
+          cat <<EOF > versions.json
+          {
+            "latest": {
+              "stable": {
+                "version": "$VER_STABLE",
+                "windows": "$WIN_URL",
+                "linux": "$LINUX_URL"
+              },
+              "preview": {
+                "version": "$VER_PREVIEW",
+                "windows": "$WIN_PREV_URL",
+                "linux": "$LINUX_PREV_URL"
+              }
+            }
+          }
+          EOF
 
-      # 3. เซฟไฟล์และอัปโหลดขึ้น GitHub อัตโนมัติ (แก้ปัญหา Error 128)
       - name: Auto Commit and Push
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "อัปเดตเวอร์ชั่น Minecraft ล่าสุด"
+          commit_message: "🚀 อัปเดตเวอร์ชั่น Minecraft อัตโนมัติ"
           file_pattern: "versions.json"
