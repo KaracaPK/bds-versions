@@ -1,14 +1,1 @@
-{
-  "latest": {
-    "stable": {
-      "version": "1.26.33.1",
-      "windows": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.33.1.zip",
-      "linux": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.33.1.zip"
-    },
-    "preview": {
-      "version": "0.0.0.0",
-      "windows": "",
-      "linux": ""
-    }
-  }
-}
+
