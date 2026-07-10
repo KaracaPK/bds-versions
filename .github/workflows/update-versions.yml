@@ -1,4 +1,4 @@
-name: Detect Minecraft Versions
+name: Detect Minecraft Versions (Ultimate)
 
 on:
   schedule:
@@ -26,16 +26,26 @@ jobs:
           LINUX_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverBedrockLinux") | .downloadUrl' | head -1)
           VER_BEDROCK=$(echo "$WIN_URL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
           
-          # 3. [Java PC] ดึงลิงก์ดาวน์โหลดไฟล์ server.jar และดึงเลขเวอร์ชั่นล่าสุดจาก Official Manifest ของ Mojang
-          JAVA_URL=$(echo "$JSON_DATA" | jq -r '.result.links[] | select(.downloadType == "serverJar") | .downloadUrl' | head -1)
+          # 3. [Java PC] ดึงข้อมูลจาก Manifest หลักของ Mojang ดึงเลขเวอร์ชั่น, ขนาดไฟล์, และ SHA-1
           JAVA_VERSION=$(curl -s "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json" | jq -r '.latest.release')
+          JAVA_META_URL=$(curl -s "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json" | jq -r --arg ver "$JAVA_VERSION" '.versions[] | select(.id == $ver) | .url')
           
-          # 4. [Timestamp] ดึงเวลาปัจจุบัน (โซนเวลาสากล UTC) เพื่อบันทึกเวลาที่บอทรันล่าสุด
-          LAST_UPDATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          JAVA_JSON=$(curl -s "$JAVA_META_URL")
+          JAVA_URL=$(echo "$JAVA_JSON" | jq -r '.downloads.server.url')
+          JAVA_SIZE=$(echo "$JAVA_JSON" | jq -r '.downloads.server.size')
+          JAVA_SHA1=$(echo "$JAVA_JSON" | jq -r '.downloads.server.sha1')
           
-          # 5. สร้างไฟล์ versions.json โครงสร้างใหม่แบบไม่มี Preview มีแต่ตัวเต็มแยกฝั่ง Bedrock และ Java PC
+          # แปลงขนาดไฟล์ Java ให้เป็น MB เพื่อให้อ่านง่ายบนหน้าเว็บ
+          JAVA_SIZE_MB=$(echo "scale=2; $JAVA_SIZE / 1024 / 1024" | bc)
+          
+          # 4. [Timestamp] สร้างเวลาสากล และ เวลาไทยสำเร็จรูป (Asia/Bangkok)
+          UTC_NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          THAI_NOW=$(TZ="Asia/Bangkok" date +"%d/%m/%Y %H:%M น.")
+          
+          # 5. สร้างไฟล์ versions.json โครงสร้างระดับพรีเมียม
           cat <<EOF > versions.json
           {
+            "status": "success",
             "latest": {
               "bedrock": {
                 "version": "${VER_BEDROCK:-"0.0.0.0"}",
@@ -44,15 +54,25 @@ jobs:
               },
               "java_pc": {
                 "version": "${JAVA_VERSION:-"0.0.0.0"}",
-                "url": "${JAVA_URL:-""}"
+                "url": "${JAVA_URL:-""}",
+                "file_size": "${JAVA_SIZE_MB} MB",
+                "sha1": "${JAVA_SHA1:-""}"
               }
             },
-            "last_updated": "$LAST_UPDATED"
+            "useful_links": {
+              "bedrock_changelog": "https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs",
+              "java_changelog": "https://www.minecraft.net/en-us/article/minecraft-java-edition",
+              "mojang_bug_tracker": "https://bugs.mojang.com/"
+            },
+            "time": {
+              "utc": "$UTC_NOW",
+              "thai_local": "$THAI_NOW"
+            }
           }
           EOF
 
       - name: Auto Commit and Push
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🚀 อัปเดตเวอร์ชั่น Minecraft (Bedrock & Java PC) อัตโนมัติ"
+          commit_message: "🚀 อัปเกรดข้อมูลเวอร์ชั่นพรีเมียม (เพิ่มข้อมูล Java + เวลาไทย + ลิงก์)"
           file_pattern: "versions.json"
