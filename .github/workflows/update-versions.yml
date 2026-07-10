@@ -1,28 +1,32 @@
-name: Detect Minecraft Bedrock Versions
+name: Update Minecraft Bedrock Versions
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # ตั้งเวลารันทุก 6 ชั่วโมง
-  workflow_dispatch: # ปุ่มกดรันเอง
+    # Run every hour
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  check-versions:
+  update-versions:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # จำเป็นมาก เพื่อให้บอทมีสิทธิ์เซฟไฟล์
-
     steps:
-      # 1. ดึงโค้ดใน Repository ปัจจุบัน
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. รันบอทเช็คเวอร์ชั่นของ Minecraft
-      - name: Detect Minecraft Versions
-        uses: jedipunkz/detect-minecraft-versions@v1.0.0
-
-      # 3. เซฟไฟล์และอัปโหลดขึ้น GitHub อัตโนมัติ (แก้ปัญหา Error 128)
-      - name: Auto Commit and Push
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Detect Minecraft Bedrock versions
+        id: detect
+        uses: jedipunkz/detect-minecraft-versions@v1
         with:
-          commit_message: "อัปเดตเวอร์ชั่น Minecraft ล่าสุด"
-          file_pattern: "versions.json"
+          output-file: 'versions.json'
+
+      - name: Commit and push changes
+        if: steps.detect.outputs.has-changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add versions.json
+          git commit -m "Update Minecraft Bedrock versions"
+          git push
