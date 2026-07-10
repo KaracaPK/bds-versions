@@ -1,15 +1,14 @@
 {
   "latest": {
     "stable": {
-      "version": "0.0.0.0",
+      "version": "",
       "windows": "",
       "linux": ""
     },
     "preview": {
-      "version": "0.0.0.0",
+      "version": "",
       "windows": "",
       "linux": ""
     }
-  },
-  "history": []
+  }
 }
