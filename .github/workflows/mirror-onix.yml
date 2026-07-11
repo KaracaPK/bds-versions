@@ -1,79 +1,100 @@
-name: Auto Mirror OnixClient Release
+name: Auto Mirror OnixClient Releases (Sync All)
 
 on:
   schedule:
-    - cron: '30 */12 * * *' # รันเช็คทุกๆ 12 ชั่วโมง (ตั้งให้เวลาเหลื่อมกับสคริปต์แรกนิดหน่อย)
-  workflow_dispatch: # มีปุ่มกดรันเองได้
+    - cron: '0 */6 * * *' # รันเช็คอัตโนมัติทุกๆ 6 ชั่วโมง
+  workflow_dispatch: # ปุ่มกดรันเอง
 
 jobs:
-  mirror-release:
+  mirror-all-releases:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # จำเป็นต้องมีสิทธิ์นี้เพื่อสร้าง Release
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fetch Latest OnixClient Release Info
-        id: fetch_info
-        run: |
-          # ไปดึงข้อมูล API จากต้นทาง
-          LATEST_RELEASE=$(curl -s https://api.github.com/repos/OnixClient/onix_compatible_appx/releases/latest)
-          
-          # แยกข้อมูลที่ต้องใช้
-          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
-          RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
-          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
-          
-          # ส่งค่าตัวแปรไปให้ Step ถัดไป
-          echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
-          echo "release_name=$RELEASE_NAME" >> $GITHUB_ENV
-          
-          # รองรับข้อความยาวๆ แบบมีหลายบรรทัด
-          echo "release_body<<EOF" >> $GITHUB_ENV
-          echo "$RELEASE_BODY" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: Check if Release Already Exists in Our Repo
-        id: check_release
+      - name: Fetch and Sync All Missing Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # ตรวจสอบว่า repo ของเรามี Tag นี้ถูกสร้างไปหรือยัง จะได้ไม่สร้างซ้ำ
-          if gh release view "$tag_name" > /dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_ENV
-            echo "✅ Release $tag_name มีในระบบของคุณอยู่แล้ว บอทจะข้ามการทำงาน"
-          else
-            echo "exists=false" >> $GITHUB_ENV
-            echo "🚨 พบ Release ใหม่: $tag_name กำลังเริ่มกระบวนการดึงไฟล์..."
-          fi
-
-      - name: Download Release Assets (Files)
-        if: env.exists == 'false'
-        run: |
-          mkdir downloaded_assets
-          cd downloaded_assets
+          echo "🔍 เริ่มต้นกระบวนการดึงข้อมูลทั้งหมดจากต้นทาง..."
           
-          # ดึงลิงก์โหลดไฟล์ทั้งหมดที่มีใน Release ต้นทาง และโหลดลงมาเก็บไว้
-          ASSET_URLS=$(curl -s https://api.github.com/repos/OnixClient/onix_compatible_appx/releases/latest | jq -r '.assets[].browser_download_url')
+          # ใช้คำสั่ง gh api พร้อม --paginate เพื่อกวาดข้อมูลทุกหน้า (ทั้งหมดที่มี) มาเก็บในไฟล์ upstream.json
+          gh api repos/OnixClient/onix_compatible_appx/releases --paginate > upstream.json
           
-          for url in $ASSET_URLS; do
-            echo "⬇️ กำลังดาวน์โหลด: $url"
-            curl -L -O "$url"
-          done
-
-      - name: Create Release in Our Repo
-        if: env.exists == 'false'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.tag_name }}
-          name: ${{ env.release_name }}
-          body: |
-            ${{ env.release_body }}
+          COUNT=$(jq '. | length' upstream.json)
+          echo "📦 พบข้อมูล Release ทั้งหมด $COUNT เวอร์ชันจากต้นทาง"
+          
+          # วนลูปอ่านข้อมูล โดยใช้ reverse เพื่อให้เริ่มเช็คและสร้างจาก 'เก่าสุด' ไปหา 'ใหม่สุด' (Timeline จะได้สวยงาม)
+          jq -c '. | reverse | .[]' upstream.json | while read -r release; do
+            TAG_NAME=$(echo "$release" | jq -r '.tag_name // empty')
+            RELEASE_NAME=$(echo "$release" | jq -r '.name // empty')
+            RELEASE_BODY=$(echo "$release" | jq -r '.body // empty')
             
-            ---
-            *🤖 Auto-mirrored from [OnixClient/onix_compatible_appx](https://github.com/OnixClient/onix_compatible_appx/releases/tag/${{ env.tag_name }})*
-          files: downloaded_assets/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # ป้องกันกรณีข้อมูลพัง
+            if [ -z "$TAG_NAME" ]; then continue; fi
+            
+            echo "========================================"
+            echo "🔎 ตรวจสอบเวอร์ชัน: $TAG_NAME"
+            
+            # ตรวจสอบว่าระบบของเรามีแท็กนี้อยู่แล้วหรือไม่
+            if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+              echo "✅ มี $TAG_NAME ในระบบอยู่แล้ว บอทจะข้ามการทำงาน"
+              continue
+            fi
+            
+            echo "🚨 ไม่พบ $TAG_NAME ในระบบ! กำลังเริ่มกระบวนการดาวน์โหลดและสร้างใหม่..."
+            
+            # สร้างโฟลเดอร์สำหรับเวอร์ชันนี้
+            mkdir -p "assets_$TAG_NAME"
+            cd "assets_$TAG_NAME"
+            
+            # ดึงลิงก์ไฟล์ (Assets) ทั้งหมดที่มีในเวอร์ชันนี้
+            ASSET_URLS=$(echo "$release" | jq -r '.assets[].browser_download_url // empty')
+            
+            HAS_FILES="false"
+            if [ -n "$ASSET_URLS" ]; then
+              for url in $ASSET_URLS; do
+                echo "⬇️ ดาวน์โหลด: $url"
+                curl -L -O -s "$url"
+                HAS_FILES="true"
+              done
+            else
+              echo "⚠️ เวอร์ชันนี้ไม่มีไฟล์แนบ"
+            fi
+            
+            # สร้างไฟล์คำอธิบาย (Notes)
+            cat <<EOF > release_notes.txt
+          $RELEASE_BODY
+          
+          ---
+          *🤖 Auto-mirrored from [OnixClient/onix_compatible_appx](https://github.com/OnixClient/onix_compatible_appx/releases/tag/$TAG_NAME)*
+          EOF
+            
+            echo "🚀 กำลังสร้าง Release ใหม่: $TAG_NAME ในหน้า Repository ของคุณ..."
+            
+            # ถ้ามีไฟล์ให้แนบไฟล์ไปด้วย ถ้าไม่มีก็สร้างแค่หน้า Release เฉยๆ
+            if [ "$HAS_FILES" = "true" ]; then
+              # ตรวจสอบว่ามีไฟล์จริงๆ นอกจาก release_notes.txt ค่อยอัปโหลด
+              if ls -A . | grep -q -v 'release_notes.txt'; then
+                gh release create "$TAG_NAME" ./* --title "${RELEASE_NAME:-$TAG_NAME}" --notes-file release_notes.txt
+              else
+                gh release create "$TAG_NAME" --title "${RELEASE_NAME:-$TAG_NAME}" --notes-file release_notes.txt
+              fi
+            else
+              gh release create "$TAG_NAME" --title "${RELEASE_NAME:-$TAG_NAME}" --notes-file release_notes.txt
+            fi
+            
+            # ถอยกลับมาและเคลียร์โฟลเดอร์ทิ้งเพื่อคืนพื้นที่
+            cd ..
+            rm -rf "assets_$TAG_NAME"
+            echo "🎉 ดำเนินการสร้าง $TAG_NAME สำเร็จเรียบร้อย!"
+            
+            # พักระบบ 5 วินาทีต่อ 1 เวอร์ชัน เพื่อป้องกันไม่ให้ GitHub มองว่าเราสแปมรัวเกินไป
+            sleep 5
+          done
+          
+          echo "========================================"
+          echo "✅ ตรวจสอบและอัปเดตเวอร์ชันทั้งหมดเสร็จสิ้นสมบูรณ์!"
