@@ -3,15 +3,15 @@
   "meta": {
     "schema_version": "1.3.0",
     "repository": "KaracaPK/bds-versions",
-    "workflow_run_id": "30013086242",
-    "last_updated_utc": "2026-07-23T13:51:40Z"
+    "workflow_run_id": "30037020548",
+    "last_updated_utc": "2026-07-23T19:12:45Z"
   },
   "latest": {
     "bedrock": {
-      "version": "1.26.33.2",
+      "version": "1.26.34.3",
       "server": {
-        "windows": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.33.2.zip",
-        "linux": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.33.2.zip"
+        "windows": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.34.3.zip",
+        "linux": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.34.3.zip"
       },
       "client": {
         "microsoft_store": "https://apps.microsoft.com/detail/9nblggh2jhxj",
