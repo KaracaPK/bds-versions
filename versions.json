@@ -3,8 +3,8 @@
   "meta": {
     "schema_version": "1.3.0",
     "repository": "KaracaPK/bds-versions",
-    "workflow_run_id": "33863911810",
-    "last_updated_utc": "2026-09-04T10:34:59Z"
+    "workflow_run_id": "33891232416",
+    "last_updated_utc": "2026-09-04T15:44:47Z"
   },
   "latest": {
     "bedrock": {
@@ -35,17 +35,17 @@
         }
       },
       "snapshot": {
-        "version": "26.3-pre-1",
+        "version": "26.3-pre-2",
         "required_java_major": 25,
         "server": {
-          "url": "https://piston-data.mojang.com/v1/objects/1e6e3a06cc13cf6975a0921b272ab544798d4b06/server.jar",
-          "file_size": "59.40 MB",
-          "sha1": "1e6e3a06cc13cf6975a0921b272ab544798d4b06"
+          "url": "https://piston-data.mojang.com/v1/objects/1dcf227881b28b21cc1d03ba830273f0d2d26319/server.jar",
+          "file_size": "59.41 MB",
+          "sha1": "1dcf227881b28b21cc1d03ba830273f0d2d26319"
         },
         "client": {
-          "url": "https://piston-data.mojang.com/v1/objects/32cf188ffc8c6a4143e74b1dcc689267566d73fb/client.jar",
+          "url": "https://piston-data.mojang.com/v1/objects/4bf834bcf10e94999f0ee5f17f1b5a7388b9b679/client.jar",
           "file_size": "39.55 MB",
-          "sha1": "32cf188ffc8c6a4143e74b1dcc689267566d73fb"
+          "sha1": "4bf834bcf10e94999f0ee5f17f1b5a7388b9b679"
         }
       }
     }
