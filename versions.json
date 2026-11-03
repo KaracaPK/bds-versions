@@ -3,8 +3,8 @@
   "meta": {
     "schema_version": "1.3.0",
     "repository": "KaracaPK/bds-versions",
-    "workflow_run_id": "41553241922",
-    "last_updated_utc": "2026-11-03T00:29:48Z"
+    "workflow_run_id": "41645975203",
+    "last_updated_utc": "2026-11-03T13:37:25Z"
   },
   "latest": {
     "bedrock": {
